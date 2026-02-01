@@ -1,8 +1,7 @@
 {
-  "name": "Carnivore Tracker",
-  "short_name": "Carnivore",
-  "start_url": "./?b=v9-20260201-143733-rminqg",
-  "scope": "./",
+  "name": "Workout",
+  "short_name": "GYM",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0f14",
   "theme_color": "#0b0f14",
@@ -16,6 +15,13 @@
       "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
+    },
+    {
+      "src": "maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
-  ]
+  ],
+  "description": "GYM tracker (Strength/Fat Loss/Volume) with RIR and instant day switching."
 }

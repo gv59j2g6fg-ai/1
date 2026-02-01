@@ -1,196 +1,95 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <meta name="theme-color" content="#0b0f14" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-  <meta name="apple-mobile-web-app-title" content="Carnivore" />
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="theme-color" content="#0b0f14"/><meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black"/><meta name="apple-mobile-web-app-title" content="Workout"/>
+<link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png">
+<link rel="manifest" href="manifest.webmanifest"/><title>Workout</title><link rel="stylesheet" href="styles.css"/><script src="app.js" defer></script>
+</head><body>
+<header class="topbar">
+  <div class="brand"><div class="logo">W</div><div><div class="title">Workout</div><div class="subtitle">Strength • Fat Loss • Volume</div></div></div>
+  <div class="datebar">
+    <button class="iconbtn" id="prevDay">◀</button><input type="date" id="dateInput"/><button class="iconbtn" id="nextDay">▶</button><button class="ghost" id="todayBtn">Today</button>
+  </div>
+  <div class="row gap" style="margin-top:10px;align-items:center">
+    <select class="input" id="daySelect" style="max-width:240px">
+      <option value="">Select day…</option>
+      <option value="strength">Strength Day</option>
+      <option value="fatloss">Fat Loss Day</option>
+      <option value="volume">Volume Day</option>
+    </select>
+    <div class="muted small" id="daySelectHint">Pick a day type to load the preset for this date.</div>
+  </div>
+<div class="tabs">
+    <button class="tab active" data-tab="strength">Strength Day</button>
+    <button class="tab" data-tab="fatloss">Fat Loss Day</button>
+    <button class="tab" data-tab="volume">Volume Day</button>
+    <button class="tab" data-tab="manage">Manage</button>
+    <button class="tab" data-tab="history">History</button>
+  </div>
+</header>
 
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png">
-
-  <link rel="manifest" href="manifest.webmanifest" />
-  <title>Carnivore Tracker</title>
-
-  <link rel="stylesheet" href="styles.css" />
-  <script src="app.js" defer></script>
-</head>
-
-<body>
-  <header class="topbar">
-    <div>
-      <h1 data-build="v6-20260201-141755-d29al5">Carnivore Tracker</h1>
-      <div class="build">Build: v9-20260201-143733-rminqg</div>
-      <div class="sub">Foods + Alcohol tracked separately. Saved locally on this device.</div>
+<main class="wrap">
+<section class="card" id="workoutCard">
+  <div class="cardhead"><div class="cardtitle" id="dayTitle">Strength Day</div>
+    <div class="row gap">
+      <button class="btn" id="loadPresetBtn">Load preset</button>
+      <button class="btn" id="copyPrevBtn">Copy previous day</button>
+      <button class="btn danger" id="clearBtn">Clear</button>
     </div>
-    <div class="pill" id="offlinePill">Offline-ready</div>
-  </header>
+  </div>
 
-  <main class="grid">
-    <!-- LEFT -->
-    <section class="card">
-      <div class="row between">
-        <div>
-          <div class="label">Date</div>
-          <input id="date" type="date" />
-        </div>
-        <button id="saveDay" class="btn primary">💾 Save this day</button>
-      </div>
+  <div class="tablewrap">
+    <table class="t">
+      <thead><tr><th style="width:28%">Exercise</th><th style="width:10%">Sets</th><th style="width:16%">Target</th><th style="width:14%">Weight</th><th style="width:12%">Pin</th><th style="width:20%">RIR</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
 
-      <div class="row gap">
-        <button id="showWeekly" class="btn">📊 Weekly report</button>
-        <button id="clearRows" class="btn danger">Clear rows</button>
-      </div>
+  <div class="row gap" style="margin-top:12px">
+    <button class="btn" id="addRowBtn">+ Add row</button><div class="spacer"></div>
+    <button class="btn accent" id="progBtn">⚡ Apply progression</button><button class="btn accent" id="saveBtn">💾 Save</button>
+  </div>
 
-      <div class="row gap between"><h2>Food log</h2><button id="jumpFoodManage" class="btn">✏️ Edit foods</button></div>
-      <div class="table food">
-        <div class="thead">
-          <div>Food</div><div>Amount (g)</div><div>kcal</div><div>P</div><div>F</div><div>C</div><div></div>
-        </div>
-        <div id="foodRows" class="tbody"></div>
-      </div>
-      <button id="addFoodRow" class="btn wide">+ Add row</button>
+  <div class="note" id="note"></div>
+</section>
 
-      <div class="row gap between"><h2>Alcohol (optional)</h2><button id="jumpDrinkManage" class="btn">✏️ Edit drinks</button></div>
-      <div class="muted">Tracked separately (does not change protein/fat targets). Choose unit (mL / Schooner / Bottle).</div>
+<section class="card hidden" id="manageCard">
+  <div class="cardhead"><div class="cardtitle">Manage Exercises</div></div>
+  <div class="row gap" style="margin-top:10px">
+    <input class="input" id="newName" placeholder="New exercise name"/>
+    <select class="input" id="newType"><option value="reps">Reps + Weight</option><option value="time">Time (seconds)</option></select>
+    <button class="btn" id="addExBtn">Add</button>
+  </div>
+  <div class="muted small" style="margin-top:8px">Delete = archive (history stays safe). You can restore anytime.</div>
+  <div id="exList" class="list"></div>
 
-      <div class="table">
-        <div class="thead">
-          <div>Drink</div><div>Unit</div><div>Amount</div><div>kcal</div><div>Carbs (g)</div><div></div></div>
-        <div id="drinkRows" class="tbody"></div>
-      </div>
+  <div class="divider" style="margin:16px 0"></div>
+  <div class="cardhead" style="margin-top:0">
+    <div class="cardtitle">Backup / Restore</div>
+  </div>
+  <div class="row gap" style="margin-top:10px; flex-wrap:wrap">
+    <button class="btn" id="exportBtn2">Export JSON</button>
+    <label class="btn">Import JSON<input id="importFile2" type="file" accept="application/json" hidden></label>
+    <div class="muted small" style="align-self:center">Use this to move data to another device or keep a copy.</div>
+  </div>
 
-      <div class="row gap">
-        <button id="addDrinkRow" class="btn wide">+ Add drink</button>
-        <button id="clearDrinks" class="btn danger wide">Clear drinks</button>
-      </div>
+</section>
 
-      <h2>Totals</h2>
-      <div class="kpis">
-        <div class="kpi"><div class="k">Food kcal</div><div id="tFoodKcal" class="v">0</div></div>
-        <div class="kpi"><div class="k">Protein (g)</div><div id="tP" class="v">0</div></div>
-        <div class="kpi"><div class="k">Fat (g)</div><div id="tF" class="v">0</div></div>
-        <div class="kpi"><div class="k">Carbs (g)</div><div id="tC" class="v">0</div></div>
-        <div class="kpi"><div class="k">Alcohol kcal</div><div id="tAlcKcal" class="v">0</div></div>
-        <div class="kpi"><div class="k">Alcohol carbs (g)</div><div id="tAlcC" class="v">0</div></div>
-      </div>
+<section class="card hidden" id="historyCard">
+  <div class="cardhead">
+    <div class="cardtitle">History</div>
+    <div class="row gap">
+      <select class="input" id="rangeSel"><option value="14">Last 14 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select>
+      <input class="input" id="search" placeholder="Search (e.g. squat)"/>
+      <button class="btn" id="exportBtn">Export JSON</button>
+      <label class="btn">Import JSON<input id="importFile" type="file" accept="application/json" hidden></label>
+    </div>
+  </div>
+  <div id="histList" class="history"></div>
+</section>
 
-      <h2>Progress</h2>
-      <div class="bars">
-        <div class="bar">
-          <div class="barhead"><span>Calories</span><span id="pCalTxt">0%</span></div>
-          <div class="track"><div id="pCal" class="fill"></div></div>
-        </div>
-        <div class="bar">
-          <div class="barhead"><span>Protein</span><span id="pPTxt">0%</span></div>
-          <div class="track"><div id="pP" class="fill"></div></div>
-        </div>
-        <div class="bar">
-          <div class="barhead"><span>Fat</span><span id="pFTxt">0%</span></div>
-          <div class="track"><div id="pF" class="fill"></div></div>
-        </div>
-        <div class="bar">
-          <div class="barhead"><span>Carbs</span><span id="pCTxt">0%</span></div>
-          <div class="track"><div id="pC" class="fill"></div></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- RIGHT -->
-    <aside class="card">
-      <h2>Targets + History</h2>
-      <div class="muted">
-        Protein defaults to 2.0 g/kg. Fat auto-fills from calories after protein + carbs.
-        Alcohol never changes protein/fat targets.
-      </div>
-
-      <div class="row gap">
-        <div class="grow">
-          <div class="label">Body weight</div>
-          <input id="bw" type="number" inputmode="decimal" step="0.1" />
-        </div>
-        <div class="grow">
-          <div class="label">Unit</div>
-          <select id="bwUnit">
-            <option value="kg" selected>kg</option>
-            <option value="lb">lb</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row gap">
-        <div class="grow">
-          <div class="label">Protein (g/kg)</div>
-          <input id="pgkg" type="number" inputmode="decimal" step="0.1" />
-        </div>
-        <div class="grow">
-          <div class="label">Target calories (kcal)</div>
-          <input id="tcal" type="number" inputmode="numeric" />
-        </div>
-      </div>
-
-      <div class="row gap">
-        <div class="grow">
-          <div class="label">Target carbs (g)</div>
-          <input id="tcarb" type="number" inputmode="numeric" />
-        </div>
-      </div>
-
-      <div class="row gap">
-        <button id="saveTargets" class="btn primary grow">Save targets</button>
-        <button id="resetTargets" class="btn danger grow">Reset</button>
-      </div>
-
-      <div class="targetsBox">
-        <div class="small">Computed targets</div>
-        <div class="tline"><span>Target kcal:</span><b id="ctKcal">0</b></div>
-        <div class="tline"><span>Target Protein (g):</span><b id="ctP">0</b></div>
-        <div class="tline"><span>Target Fat (g):</span><b id="ctF">0</b></div>
-        <div class="tline"><span>Target Carbs (g):</span><b id="ctC">0</b></div>
-      </div>
-
-      <h2>History (load / delete)</h2>
-      <div class="muted">Saved days are stored on this device only.</div>
-      <div class="row gap">
-        <button id="exportJson" class="btn wide">Export JSON</button>
-        <button id="importJson" class="btn wide">Import JSON</button>
-        <input id="importFile" type="file" accept="application/json" style="display:none" />
-      </div>
-
-      <div id="historyList" class="history"></div>
-
-      <h2>Food list (edit)</h2>
-      <div class="muted">Add, delete, or Edit foods in the dropdown list. Values are per 100g. Saved locally.</div>
-
-      <div class="stack">
-        <input id="newFoodName" placeholder="Food name" />
-        <input id="newFoodKcal" type="number" inputmode="numeric" placeholder="kcal/100g" />
-        <input id="newFoodP" type="number" inputmode="decimal" placeholder="P/100g" />
-        <input id="newFoodF" type="number" inputmode="decimal" placeholder="F/100g" />
-        <input id="newFoodC" type="number" inputmode="decimal" placeholder="C/100g" />
-        <button id="addFoodBtn" class="btn primary">Add food</button>
-        <button id="resetFoods" class="btn danger">Reset foods</button>
-      </div>
-
-      <div id="foodListManage" class="list"></div>
-
-      <h2>Drink list (edit)</h2>
-      <div class="muted">Values are per 100mL (approx). Tap Edit to change a drink (name or macros).</div>
-
-      <div class="stack">
-        <input id="newDrinkName" placeholder="Drink name" />
-        <input id="newDrinkKcal" type="number" inputmode="decimal" placeholder="kcal/100mL" />
-        <input id="newDrinkC" type="number" inputmode="decimal" placeholder="carbs/100mL" />
-        <button id="addDrinkBtn" class="btn primary">Add drink</button>
-        <button id="resetDrinks" class="btn danger">Reset drinks</button>
-      </div>
-
-      <div id="drinkListManage" class="list"></div>
-
-      <div class="footerNote" id="installHint"></div>
-    </aside>
-  </main>
-</body>
-</html>
+<footer class="footer">
+  <div>Offline-first. Data stays on your device.</div>
+  <div class="muted small">If you upload new files and iPad shows old version: Settings → Safari → Advanced → Website Data → delete github.io</div>
+<div class="muted small">Build: gym-template-v18-openDate</div></footer>
+</main></body></html>

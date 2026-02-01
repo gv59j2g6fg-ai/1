@@ -1,1239 +1,538 @@
-/* Carnivore Tracker — iPad keyboard-safe (no input-based rerenders)
-   - Recalc happens on CHANGE/BLUR only
-   - Rows are created once; we do not rebuild the entire table while typing
-*/
+// Full exact original Strength/Fat Loss/Volume build
+const STORE_KEY="gym_template_rir_v10_history_x_pin";
 
-const LS = {
-  FOODS: "ct_foods_v1",
-  DRINKS: "ct_drinks_v1",
-  TARGETS: "ct_targets_v1",
-  DAY_DRAFT: "ct_day_draft_v1",
-  HISTORY: "ct_history_v1"
-};
+const INC_KG=2.5;
 
-const $ = (id) => document.getElementById(id);
 
-const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
-const round0 = (n) => Math.round(Number(n) || 0);
-const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-const nameKey = (s) => (s || "").trim();
-const nameSorter = (a, b) => nameKey(a?.name).localeCompare(nameKey(b?.name), undefined, { sensitivity: "base" });
-
-function groupLetter(name) {
-  const ch = (nameKey(name)[0] || "#").toUpperCase();
-  return (ch >= "A" && ch <= "Z") ? ch : "#";
+const DAY_ORDER=['strength','fatloss','volume'];
+function uid(p="id"){return `${p}_${Math.random().toString(16).slice(2)}_${Date.now()}`;}
+function localISO(d=new Date()){const off=d.getTimezoneOffset();return new Date(d.getTime()-off*60000).toISOString().slice(0,10);}
+function addDays(iso,n){
+  const d=new Date(iso+'T00:00:00');
+  d.setDate(d.getDate()+n);
+  return localISO(d);
 }
+function parseTop(t){t=(t||'').toString().trim();if(!t)return null;const m=t.match(/(\d+)\s*-\s*(\d+)/);if(m)return parseInt(m[2],10);const n=t.match(/(\d+)/);return n?parseInt(n[1],10):null;}
 
+function load(){try{return JSON.parse(localStorage.getItem(STORE_KEY)||'null');}catch(e){return null;}}
+function save(s){localStorage.setItem(STORE_KEY, JSON.stringify(s));}
 
-function todayISO() {
-  const d = new Date();
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60 * 1000);
-  return local.toISOString().slice(0, 10);
-}
-
-const DRINK_UNITS = [
-  { key: "ml", label: "mL", mlPer: 1 },
-  { key: "schooner", label: "Schooner (425mL)", mlPer: 425 },
-  { key: "bottle", label: "Bottle (375mL)", mlPer: 375 }
-];
-
-function drinkMlFromRow(r) {
-  // Backward compatible: legacy rows used r.ml
-  if (r && typeof r.ml !== "undefined" && typeof r.amount === "undefined") {
-    return Number(r.ml) || 0;
-  }
-  const unitKey = (r && r.unit) ? r.unit : "ml";
-  const amt = Number(r && r.amount) || 0;
-  const u = DRINK_UNITS.find(x => x.key === unitKey) || DRINK_UNITS[0];
-  return amt * (u.mlPer || 1);
-}
-
-function normalizeDrinkRow(r) {
-  if (!r) return { drink: "", unit: "ml", amount: 0 };
-  if (typeof r.amount === "undefined" && typeof r.ml !== "undefined") {
-    return { drink: r.drink || "", unit: "ml", amount: Number(r.ml) || 0 };
-  }
-  return { drink: r.drink || "", unit: (r.unit || "ml"), amount: Number(r.amount) || 0 };
-}
-
-
-function loadJSON(key, fallback) {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? JSON.parse(v) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
-}
-
-/* ---------- Defaults ---------- */
-
-function defaultFoods() {
-  // per 100g
-  return [
-    { name: "Scotch fillet", kcal: 291, p: 19.8, f: 23.1, c: 0 },
-    { name: "T-bone steak", kcal: 247, p: 20.5, f: 17.4, c: 0 },
-    { name: "80/20 mince", kcal: 254, p: 17.2, f: 20.0, c: 0 },
-    { name: "75/10/10/5 mince (organ)", kcal: 230, p: 18.0, f: 17.0, c: 0 },
-    { name: "Clean sausage", kcal: 280, p: 16.0, f: 24.0, c: 1.0 },
-    { name: "Lamb loin chops", kcal: 282, p: 18.0, f: 23.0, c: 0 },
-    { name: "Beef burger patty", kcal: 250, p: 17.0, f: 20.0, c: 0 },
-    { name: "Eggs", kcal: 143, p: 12.6, f: 9.5, c: 0.7 },
-    { name: "Salmon (skin on)", kcal: 208, p: 20.0, f: 13.0, c: 0 },
-    { name: "Butter", kcal: 717, p: 0.9, f: 81.0, c: 0.1 },
-    { name: "Tallow", kcal: 902, p: 0, f: 100.0, c: 0 }
+function defaultState(){
+  const exercises=[
+    {id:uid('ex'),name:'Squat',type:'reps',archived:false},
+    {id:uid('ex'),name:'Bench Press (Free)',type:'reps',archived:false},
+    {id:uid('ex'),name:'Bent Over Row',type:'reps',archived:false},
+    {id:uid('ex'),name:'Skull Crusher',type:'reps',archived:false},
+    {id:uid('ex'),name:'Deadlift',type:'reps',archived:false},
+    {id:uid('ex'),name:'Lat Pull Down',type:'reps',archived:false},
+    {id:uid('ex'),name:'Military / Arnold Press',type:'reps',archived:false},
+    {id:uid('ex'),name:'Hammer Curl',type:'reps',archived:false},
+    {id:uid('ex'),name:'Stiff-Leg Romanian Deadlift',type:'reps',archived:false},
+    {id:uid('ex'),name:'Chest Fly',type:'reps',archived:false},
+    {id:uid('ex'),name:'Seated Dumbbell Extension',type:'reps',archived:false},
+    {id:uid('ex'),name:'Dumbbell Palm Curl',type:'reps',archived:false},
+    {id:uid('ex'),name:"Farmer's Walk",type:'time',archived:false},
   ];
+  const id=(n)=>exercises.find(e=>e.name===n)?.id||'';
+  const mk=(name,sets,target)=>({id:uid('row'),exId:id(name),sets:String(sets),target:String(target),weight:'',rir:''});
+  const presets={
+    strength:[mk('Squat',2,5),mk('Bench Press (Free)',2,5),mk('Bent Over Row',2,5),mk('Skull Crusher',2,10)],
+    fatloss:[mk('Deadlift',2,12),mk('Lat Pull Down',2,15),mk('Military / Arnold Press',2,15),mk('Hammer Curl',2,15),mk("Farmer's Walk",2,35)],
+    volume:[mk('Stiff-Leg Romanian Deadlift',2,10),mk('Chest Fly',2,12),mk('Seated Dumbbell Extension',2,12),mk('Dumbbell Palm Curl',2,12),mk("Farmer's Walk",2,35)],
+  };
+  return {exercises,presets,sessions:{},progression:{}};
 }
 
-function defaultDrinks() {
-  // per 100mL (approx)
-  return [
-    { name: "Better Beer", kcal: 35, c: 1.0 },
-    { name: "Whisky (40%)", kcal: 222, c: 0 },
-    { name: "Beer (regular)", kcal: 43, c: 3.5 }
-  ];
-}
+let state=load()||defaultState();save(state);
 
-function defaultTargets() {
-  return { bw: 98, bwUnit: "kg", pgkg: 2.0, tcal: 2200, tcarb: 0 };
-}
+const dateInput=document.getElementById('dateInput');
+const prevDay=document.getElementById('prevDay');
+const nextDay=document.getElementById('nextDay');
+const todayBtn=document.getElementById('todayBtn');
+const tabs=[...document.querySelectorAll('.tab')];
+const workoutCard=document.getElementById('workoutCard');
+const manageCard=document.getElementById('manageCard');
+const historyCard=document.getElementById('historyCard');
+const dayTitle=document.getElementById('dayTitle');
+const daySelect=document.getElementById('daySelect');
+const daySelectHint=document.getElementById('daySelectHint');
+const tbody=document.getElementById('tbody');
+const note=document.getElementById('note');
 
-/* ---------- State ---------- */
+const loadPresetBtn=document.getElementById('loadPresetBtn');
+const copyPrevBtn=document.getElementById('copyPrevBtn');
+const clearBtn=document.getElementById('clearBtn');
+const addRowBtn=document.getElementById('addRowBtn');
+const progBtn=document.getElementById('progBtn');
+const saveBtn=document.getElementById('saveBtn');
 
-let foods = loadJSON(LS.FOODS, null) || defaultFoods();
-foods.sort(nameSorter);
-let foodEditIndex = -1;
-let drinks = loadJSON(LS.DRINKS, null) || defaultDrinks();
-drinks.sort(nameSorter);
-let drinkEditIndex = -1;
-let targets = loadJSON(LS.TARGETS, null) || defaultTargets();
+const newName=document.getElementById('newName');
+const newType=document.getElementById('newType');
+const addExBtn=document.getElementById('addExBtn');
+const exList=document.getElementById('exList');
 
-let dayDraft = loadJSON(LS.DAY_DRAFT, null) || {
-  date: todayISO(),
-  foodRows: [],
-  drinkRows: []
-};
+const rangeSel=document.getElementById('rangeSel');
+const search=document.getElementById('search');
+const histList=document.getElementById('histList');
+const exportBtn=document.getElementById('exportBtn');
+const importFile=document.getElementById('importFile');
+const exportBtn2=document.getElementById('exportBtn2');
+const importFile2=document.getElementById('importFile2');
 
-// Open each new day as CLEAN (no yesterday rows)
-if (!dayDraft.date || dayDraft.date !== todayISO()) {
-  dayDraft = { date: todayISO(), foodRows: [], drinkRows: [] };
-  saveJSON(LS.DAY_DRAFT, dayDraft);
-} else {
-  dayDraft.drinkRows = (dayDraft.drinkRows || []).map(normalizeDrinkRow);
-}
+let currentDate=localISO();
+let currentTab='strength';
+let followToday=true; // if true, app auto-opens/returns to today
+
+dateInput.value=currentDate;
+// Day type dropdown sync
+syncDaySelectForDate();
 
 
-let history = loadJSON(LS.HISTORY, null) || {}; // keyed by date
+function exById(id){return state.exercises.find(e=>e.id===id)||null;}
 
-/* ---------- Init ---------- */
-
-document.addEventListener("DOMContentLoaded", () => {
-  // Register SW
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+function syncDaySelectForDate(){
+  const sess=state.sessions[currentDate];
+  const t=sess?.dayType||'';
+  if(daySelect){
+    daySelect.value=t||'';
   }
-
-  // Date
-  $("date").value = dayDraft.date || todayISO();
-  $("date").addEventListener("change", () => {
-    dayDraft.date = $("date").value || todayISO();
-    persistDraft();
-  });
-
-  // Targets fill
-  applyTargetsToUI();
-
-  // Targets events (CHANGE/BLUR only)
-  ["bw", "pgkg", "tcal", "tcarb"].forEach((id) => {
-    const el = $(id);
-    el.addEventListener("change", computeTargetsAndUpdateUI);
-    el.addEventListener("blur", computeTargetsAndUpdateUI);
-  });
-  $("bwUnit").addEventListener("change", computeTargetsAndUpdateUI);
-
-  $("saveTargets").addEventListener("click", () => {
-    targets = readTargetsFromUI();
-    saveJSON(LS.TARGETS, targets);
-    computeTargetsAndUpdateUI();
-    toast("Targets saved");
-  });
-
-  $("resetTargets").addEventListener("click", () => {
-    targets = defaultTargets();
-    saveJSON(LS.TARGETS, targets);
-    applyTargetsToUI();
-    computeTargetsAndUpdateUI();
-    toast("Targets reset");
-  });
-
-  // Food rows
-  $("addFoodRow").addEventListener("click", () => addFoodRow());
-  $("clearRows").addEventListener("click", () => {
-    dayDraft.foodRows = [];
-    renderFoodRows();
-    persistDraft();
-    recalcTotals();
-  });
-
-  // Drink rows
-  $("addDrinkRow").addEventListener("click", () => addDrinkRow());
-  $("clearDrinks").addEventListener("click", () => {
-    dayDraft.drinkRows = [];
-    renderDrinkRows();
-    persistDraft();
-    recalcTotals();
-  });
-
-  // Save day
-  $("saveDay").addEventListener("click", saveCurrentDay);
-
-  // Weekly
-  $("showWeekly").addEventListener("click", showWeeklyReport);
-
-  // Export JSON
-  $("exportJson").addEventListener("click", exportHistoryJSON);
-  $("importJson").addEventListener("click", () => $("importFile").click());
-  $("importFile").addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = "";
-    importFromFile(f);
-  });
-
-  // Manage foods
-  $("addFoodBtn").addEventListener("click", addFoodToList);
-  $("resetFoods").addEventListener("click", () => {
-    foods = defaultFoods();
-    saveJSON(LS.FOODS, foods);
-    renderFoodManager();
-    refreshFoodSelects();
-    recalcTotals();
-    toast("Foods reset");
-  });
-
-  // Manage drinks
-  $("addDrinkBtn").addEventListener("click", addDrinkToList);
-  $("resetDrinks").addEventListener("click", () => {
-    drinks = defaultDrinks();
-    saveJSON(LS.DRINKS, drinks);
-    renderDrinkManager();
-    refreshDrinkSelects();
-    recalcTotals();
-    toast("Drinks reset");
-  });
-
-
-  // Quick links
-  $("jumpFoodManage").addEventListener("click", () => {
-    document.getElementById("foodListManage")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  $("jumpDrinkManage").addEventListener("click", () => {
-    document.getElementById("drinkListManage")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-
-  // Show build tag
-  const bt = document.getElementById("buildTag");
-  if (bt) bt.textContent = BUILD;
-
-  // Force refresh (clears caches + unregisters service worker)
-  const fu = document.getElementById("forceUpdate");
-  if (fu) fu.addEventListener("click", async () => {
-    try {
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map(k => caches.delete(k)));
-      }
-      if (navigator.serviceWorker) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
-      }
-      toast("Refreshing…");
-      setTimeout(() => location.reload(true), 350);
-    } catch (e) {
-      console.error(e);
-      toast("Could not refresh (try clearing Website Data)");
+  if(t && (t==='strength'||t==='fatloss'||t==='volume')){
+    currentTab=t;
+  }
+}
+function canAutoLoadPreset(){
+  // Only auto-load when a day type is explicitly selected for this date, or when the date already has a dayType saved.
+  const sess=state.sessions[currentDate];
+  const savedType=sess?.dayType;
+  const selected=daySelect?daySelect.value:'';
+  return Boolean(selected||savedType);
+}
+function activeExercises(){return state.exercises.filter(e=>!e.archived);}
+function ensureSession(){
+  if(!state.sessions[currentDate]) state.sessions[currentDate]={dayType:currentTab,rows:[]};
+  const s=state.sessions[currentDate];
+  if(!Array.isArray(s.rows)) s.rows=[];
+  return s;
+}
+function setTitle(){
+  dayTitle.textContent=currentTab==='strength'?'Strength Day':currentTab==='fatloss'?'Fat Loss Day':currentTab==='volume'?'Volume Day':'Workout';
+  if(daySelect){
+    if(currentTab==='manage'||currentTab==='history'){
+      daySelect.disabled=true;
+      if(daySelectHint) daySelectHint.textContent='Day type selection is disabled in Manage/History.';
+    }else{
+      daySelect.disabled=false;
+      if(daySelectHint) daySelectHint.textContent='Pick a day type to load the preset for this date.';
     }
-  });
-
-
-  // Render initial UI
-  renderFoodRows();
-  renderDrinkRows();
-  renderFoodManager();
-  renderDrinkManager();
-  renderHistory();
-  computeTargetsAndUpdateUI();
-  recalcTotals();
-  installHint();
-
-  // Online/offline pill
-  const pill = $("offlinePill");
-  const updatePill = () => {
-    if (navigator.onLine) {
-      pill.textContent = "Online";
-      pill.style.background = "rgba(42,140,255,.18)";
-      pill.style.borderColor = "rgba(42,140,255,.35)";
-    } else {
-      pill.textContent = "Offline";
-      pill.style.background = "rgba(0,255,140,.12)";
-      pill.style.borderColor = "rgba(0,255,140,.25)";
-    }
-  };
-  window.addEventListener("online", updatePill);
-  window.addEventListener("offline", updatePill);
-  updatePill();
-
-  // Ensure at least one row each for convenience
-  if (!dayDraft.foodRows.length) addFoodRow();
-  if (!dayDraft.drinkRows.length) addDrinkRow();
-});
-
-/* ---------- Draft + History ---------- */
-
-function persistDraft() {
-  saveJSON(LS.DAY_DRAFT, dayDraft);
+  }
+  note.textContent="Pick Strength / Fat Loss / Volume to auto-load the preset. Log Weight, Pin + RIR.";
 }
 
-function saveCurrentDay() {
-  const d = $("date").value || todayISO();
-  dayDraft.date = d;
-
-  // Normalize rows (strip UI-only)
-  const payload = {
-    date: d,
-    foodRows: dayDraft.foodRows.map(r => ({ food: r.food || "", grams: Number(r.grams) || 0 })),
-    drinkRows: dayDraft.drinkRows.map(r => ({ drink: r.drink || "", ml: Number(r.ml) || 0 })),
-    targets: readComputedTargets()
-  };
-
-  history[d] = payload;
-  saveJSON(LS.HISTORY, history);
-  persistDraft();
-  renderHistory();
-  toast("Day saved");
+function render(){
+  tabs.forEach(b=>b.classList.toggle('active', b.dataset.tab===currentTab));
+  workoutCard.classList.toggle('hidden', currentTab==='manage'||currentTab==='history');
+  manageCard.classList.toggle('hidden', currentTab!=='manage');
+  historyCard.classList.toggle('hidden', currentTab!=='history');
+  if(currentTab==='manage') renderManage();
+  if(currentTab==='history') renderHistory();
+  if(currentTab==='strength'||currentTab==='fatloss'||currentTab==='volume') renderWorkout();
 }
 
-function renderHistory() {
-  const wrap = $("historyList");
-  wrap.innerHTML = "";
+function renderWorkout(){
+  setTitle();
+  const sess=ensureSession();
+  tbody.innerHTML='';
+  sess.rows.forEach(r=>tbody.appendChild(renderRow(r)));
+}
 
-  const dates = Object.keys(history).sort((a,b) => b.localeCompare(a));
-  if (!dates.length) {
-    wrap.innerHTML = `<div class="muted">No saved days yet.</div>`;
+function renderRow(r){
+  const tr=document.createElement('tr');
+
+  const td1=document.createElement('td');
+  const sel=document.createElement('select'); sel.className='input';
+  const o0=document.createElement('option'); o0.value=''; o0.textContent='Select…'; sel.appendChild(o0);
+
+  const opts=[...activeExercises()];
+  const rowEx=exById(r.exId);
+  if(rowEx && rowEx.archived && !opts.find(x=>x.id===rowEx.id)) opts.unshift(rowEx);
+
+  opts.forEach(ex=>{const o=document.createElement('option'); o.value=ex.id; o.textContent=ex.archived?`${ex.name} (archived)`:ex.name; sel.appendChild(o);});
+  sel.value=r.exId||'';
+  sel.onchange=()=>{
+    r.exId=sel.value;
+    const ex=exById(r.exId);
+    if(ex?.type==='reps'){const nw=state.progression[ex.id]; if(nw && !r.weight) r.weight=String(nw);}
+    else {r.weight='';}
+    save(state); renderWorkout();
+  };
+  td1.appendChild(sel);
+
+  const td2=document.createElement('td');
+  const sets=document.createElement('input'); sets.className='input'; sets.inputMode='numeric'; sets.value=r.sets??'';
+  sets.oninput=()=>{r.sets=sets.value; save(state);};
+  td2.appendChild(sets);
+
+  const td3=document.createElement('td');
+  const tgt=document.createElement('input'); tgt.className='input'; tgt.inputMode='numeric'; tgt.value=r.target??'';
+  tgt.oninput=()=>{r.target=tgt.value; save(state);};
+  td3.appendChild(tgt);
+
+  const td4=document.createElement('td');
+  const w=document.createElement('input'); w.className='input'; w.inputMode='decimal';
+  const ex=exById(r.exId);
+  w.placeholder=ex?.type==='time'?'—':'kg';
+  w.value=r.weight??''; w.disabled=(ex?.type==='time');
+  w.oninput=()=>{r.weight=w.value; save(state);};
+  td4.appendChild(w);
+
+
+  const tdPin=document.createElement('td');
+  const pinSel=document.createElement('select'); pinSel.className='input';
+  pinSel.innerHTML = `<option value="">Pin</option>` + Array.from({length:15},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
+  pinSel.value = r.pin ?? '';
+  pinSel.onchange=()=>{r.pin=pinSel.value; save(state);};
+  tdPin.appendChild(pinSel);
+
+
+  const td5=document.createElement('td');
+  const done=document.createElement('select');
+  done.className='rirSelect';
+  // Safari-friendly picker: 1 / 2 / 3+
+  done.innerHTML = `
+    <option value="">RIR</option>
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3+</option>
+    <option value="custom">Custom…</option>
+  `;
+  const curVal = (r.rir??'').toString().trim().replace('+','');
+  if(curVal==='1'||curVal==='2'||curVal==='3') done.value=curVal;
+  else if(curVal) done.value='custom';
+  else done.value='';
+
+  done.onchange=()=>{
+    if(done.value==='custom'){
+      const v = prompt('Enter RIR (number, e.g. 2 or 3.5)', r.rir??'');
+      if(v===null){
+        // revert selection
+        const vv=(r.rir??'').toString().trim().replace('+','');
+        done.value = (vv==='1'||vv==='2'||vv==='3') ? vv : (vv ? 'custom' : '');
+        return;
+      }
+      r.rir = v.toString().replace('+','').trim();
+      save(state);
+      render();
+      return;
+    }
+    r.rir = done.value; // "", "1", "2", "3"
+    save(state);
+  };
+  td5.appendChild(done);
+
+  tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3); tr.appendChild(td4); tr.appendChild(tdPin); tr.appendChild(td5);
+  return tr;
+}
+
+function loadPreset(force=false, persist=true){
+  const preset=state.presets[currentTab]||[];
+  const sess=ensureSession();
+  sess.dayType=currentTab;
+
+  // Block overwrite ONLY if real training inputs exist (kg / pin / RIR)
+  const hasRealData = Array.isArray(sess.rows) && sess.rows.some(r=>{
+    return (r.weight && String(r.weight).trim()!=='') ||
+           (r.pin && String(r.pin).trim()!=='') ||
+           (r.rir && String(r.rir).trim()!=='');
+  });
+
+  if(hasRealData && !force){
+    if(persist) save(state);
+    renderWorkout();
     return;
   }
 
-  dates.forEach(date => {
-    const item = history[date];
-    const sums = computeSumsForDay(item);
-
-    const div = document.createElement("div");
-    div.className = "hitem";
-
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.innerHTML = `
-      <div class="d">${date}</div>
-      <div class="s">${round0(sums.foodKcal)} kcal • P ${round0(sums.p)} • F ${round0(sums.f)} • C ${round0(sums.c)} • Alc ${round0(sums.alcKcal)} kcal</div>
-    `;
-
-    const actions = document.createElement("div");
-    actions.className = "hactions";
-
-    const loadBtn = document.createElement("button");
-    loadBtn.className = "btn";
-    loadBtn.textContent = "Load";
-    loadBtn.addEventListener("click", () => {
-      loadDay(date);
-    });
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "btn danger";
-    delBtn.textContent = "Delete";
-    delBtn.addEventListener("click", () => {
-      delete history[date];
-      saveJSON(LS.HISTORY, history);
-      renderHistory();
-      toast("Deleted");
-    });
-
-    actions.appendChild(loadBtn);
-    actions.appendChild(delBtn);
-
-    div.appendChild(meta);
-    div.appendChild(actions);
-    wrap.appendChild(div);
-  });
+  sess.rows=preset.map(p=>({...p,id:uid('row'),weight:'',pin:'',rir:''}));
+  if(persist) save(state);
+  renderWorkout();
 }
+function copyPrev(){
+  const prev=state.sessions[addDays(currentDate,-1)];
+  if(!prev?.rows?.length){alert('No previous day to copy.');return;}
+  const sess=ensureSession();
+  sess.rows=prev.rows.map(r=>({...r,id:uid('row'),rir:''}));
+  save(state); renderWorkout();
+}
+function clearDay(){
+  if(!confirm('Clear this day?')) return;
+  const sess=ensureSession(); sess.rows=[]; save(state); renderWorkout();
+}
+function addRow(){
+  const sess=ensureSession(); sess.rows.push({id:uid('row'),exId:'',sets:'2',target:'',weight:'',pin:'',rir:''});
+  save(state); renderWorkout();
+}
+function applyProgression(){
+  // RIR-based progression:
+  // RIR 1 (hard / 0-1): increase weight next time (or reps for bodyweight)
+  // RIR 2 (medium): keep weight
+  // RIR 3 (easy / 3+): increase reps or weight if reps already at target
+  const s = state;
+  const tab = currentTab;
+  if(!(tab==='strength'||tab==='fatloss'||tab==='volume')){ note.textContent='Go to a day tab first.'; return; }
+  const cur = s.sessions?.[tab]?.rows || [];
+  if(!cur.length){ note.textContent='Nothing to progress.'; return; }
 
-function loadDay(date) {
-  const item = history[date];
-  if (!item) return;
-
-  dayDraft = {
-    date: item.date,
-    foodRows: (item.foodRows || []).map(r => ({ food: r.food || "", grams: Number(r.grams) || 0 })),
-    drinkRows: (item.drinkRows || []).map(r => ({ drink: r.drink || "", ml: Number(r.ml) || 0 }))
+  const bump = (w)=>{
+    const x=parseFloat(w);
+    if(!isFinite(x)) return w;
+    // 2.5kg step default
+    return (Math.round((x+2.5)*10)/10).toString();
   };
 
-  $("date").value = dayDraft.date;
-  renderFoodRows();
-  renderDrinkRows();
-  persistDraft();
-  recalcTotals();
-  toast("Loaded");
-}
-
-/* ---------- Foods & Drinks lists ---------- */
-
-
-function renameFoodEverywhere(oldName, newName){
-  if(!oldName || !newName || oldName===newName) return;
-  dayDraft.foodRows.forEach(r => { if(r.food===oldName) r.food = newName; });
-  Object.keys(history || {}).forEach(d => {
-    const day = history[d];
-    if(!day || !Array.isArray(day.foodRows)) return;
-    day.foodRows.forEach(r => { if(r.food===oldName) r.food = newName; });
-  });
-}
-
-function renameDrinkEverywhere(oldName, newName){
-  if(!oldName || !newName || oldName===newName) return;
-  dayDraft.drinkRows.forEach(r => { if(r.drink===oldName) r.drink = newName; });
-  Object.keys(history || {}).forEach(d => {
-    const day = history[d];
-    if(!day || !Array.isArray(day.drinkRows)) return;
-    day.drinkRows.forEach(r => { if(r.drink===oldName) r.drink = newName; });
-  });
-}
-
-function addFoodToList() {
-  const name = ($("newFoodName").value || "").trim();
-  if (!name) return toast("Food name required");
-
-  const kcal = Number($("newFoodKcal").value);
-  const p = Number($("newFoodP").value);
-  const f = Number($("newFoodF").value);
-  const c = Number($("newFoodC").value);
-
-  if (!isFinite(kcal) || !isFinite(p) || !isFinite(f) || !isFinite(c)) return toast("Enter valid numbers");
-
-  // prevent duplicates by name (case-insensitive)
-  if (foods.some(x => x.name.toLowerCase() === name.toLowerCase())) return toast("Food already exists");
-
-  foods.push({ name, kcal, p, f, c });
-  foods.sort(nameSorter);
-  saveJSON(LS.FOODS, foods);
-
-  $("newFoodName").value = "";
-  $("newFoodKcal").value = "";
-  $("newFoodP").value = "";
-  $("newFoodF").value = "";
-  $("newFoodC").value = "";
-
-  renderFoodManager();
-  refreshFoodSelects();
-  recalcTotals();
-  toast("Food added");
-}
-
-
-function renderFoodManager() {
-  const wrap = $("foodListManage");
-  wrap.innerHTML = "";
-
-  let currentGroup = "";
-  foods.forEach((f, idx) => {
-    const g = groupLetter(f.name);
-    if (g !== currentGroup) {
-      currentGroup = g;
-      const gh = document.createElement("div");
-      gh.className = "groupHead";
-      gh.textContent = currentGroup;
-      wrap.appendChild(gh);
-    }
-    const div = document.createElement("div");
-    div.className = "litem";
-
-    const isEditing = (foodEditIndex === idx);
-
-    const header = document.createElement("div");
-    header.innerHTML = `
-      <div>
-        <div><b>${escapeHTML(f.name)}</b></div>
-        <div class="muted">${round0(f.kcal)} kcal • P ${round1(f.p)} • F ${round1(f.f)} • C ${round1(f.c)} (per 100g)</div>
-      </div>
-    `;
-
-    const actions = document.createElement("div");
-    actions.className = "lactions";
-
-    const editBtn = document.createElement("button");
-    editBtn.className = "btn";
-    editBtn.textContent = isEditing ? "Cancel" : "Edit";
-    editBtn.addEventListener("click", () => {
-      foodEditIndex = isEditing ? -1 : idx;
-      renderFoodManager();
-    });
-
-    const del = document.createElement("button");
-    del.className = "btn danger";
-    del.textContent = "Delete";
-    del.addEventListener("click", () => {
-      const name = foods[idx].name;
-      foods.splice(idx, 1);
-      saveJSON(LS.FOODS, foods);
-
-      // clear any selected rows that used this food
-      dayDraft.foodRows.forEach(r => { if (r.food === name) r.food = ""; });
-      Object.keys(history || {}).forEach(d => {
-        const day = history[d];
-        if (!day || !Array.isArray(day.foodRows)) return;
-        day.foodRows.forEach(r => { if (r.food === name) r.food = ""; });
-      });
-
-      foodEditIndex = -1;
-      renderFoodManager();
-      refreshFoodSelects();
-      renderFoodRows(); // safe: only called on delete/edit (not typing)
-      persistDraft();
-      recalcTotals();
-      toast("Deleted");
-    });
-
-    actions.appendChild(editBtn);
-    actions.appendChild(del);
-
-    div.appendChild(header);
-    div.appendChild(actions);
-
-    if (isEditing) {
-      const row = document.createElement("div");
-      row.className = "editrow";
-      row.innerHTML = `
-        <input id="fe_name_${idx}" value="${escapeAttr(f.name)}" />
-        <input id="fe_kcal_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(f.kcal))}" placeholder="kcal/100g" />
-        <input id="fe_p_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(f.p))}" placeholder="P/100g" />
-        <input id="fe_f_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(f.f))}" placeholder="F/100g" />
-        <input id="fe_c_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(f.c))}" placeholder="C/100g" />
-        <button id="fe_save_${idx}" class="btn primary">Save</button>
-      `;
-      div.appendChild(row);
-
-      row.querySelector(`#fe_save_${idx}`).addEventListener("click", () => {
-        const newName = (row.querySelector(`#fe_name_${idx}`).value || "").trim();
-        const kcal = Number(row.querySelector(`#fe_kcal_${idx}`).value);
-        const p = Number(row.querySelector(`#fe_p_${idx}`).value);
-        const fat = Number(row.querySelector(`#fe_f_${idx}`).value);
-        const c = Number(row.querySelector(`#fe_c_${idx}`).value);
-
-        if (!newName) return toast("Name required");
-        if (![kcal,p,fat,c].every(isFinite)) return toast("Enter valid numbers");
-
-        // unique name check (case-insensitive) if changed
-        const oldName = foods[idx].name;
-        if (newName.toLowerCase() !== oldName.toLowerCase()) {
-          if (foods.some((x,i) => i!==idx && x.name.toLowerCase()===newName.toLowerCase())) {
-            return toast("That name already exists");
-          }
-        }
-
-        foods[idx] = { name: newName, kcal, p, f: fat, c };
-        foods.sort(nameSorter);
-        saveJSON(LS.FOODS, foods);
-
-        // update existing logs so your past entries show the new name
-        renameFoodEverywhere(oldName, newName);
-        saveJSON(LS.HISTORY, history);
-        persistDraft();
-
-        foodEditIndex = -1;
-        renderFoodManager();
-        refreshFoodSelects();
-        renderFoodRows(); // reflect rename in dropdown rows
-        renderHistory();
-        recalcTotals();
-        toast("Saved");
-      });
-    }
-
-    wrap.appendChild(div);
-  });
-}
-
-function addDrinkToList() {
-  const name = ($("newDrinkName").value || "").trim();
-  if (!name) return toast("Drink name required");
-
-  const kcal = Number($("newDrinkKcal").value);
-  const c = Number($("newDrinkC").value);
-
-  if (!isFinite(kcal) || !isFinite(c)) return toast("Enter valid numbers");
-
-  if (drinks.some(x => x.name.toLowerCase() === name.toLowerCase())) return toast("Drink already exists");
-
-  drinks.push({ name, kcal, c });
-  drinks.sort(nameSorter);
-  saveJSON(LS.DRINKS, drinks);
-
-  $("newDrinkName").value = "";
-  $("newDrinkKcal").value = "";
-  $("newDrinkC").value = "";
-
-  renderDrinkManager();
-  refreshDrinkSelects();
-  recalcTotals();
-  toast("Drink added");
-}
-
-
-function renderDrinkManager() {
-  const wrap = $("drinkListManage");
-  wrap.innerHTML = "";
-
-  let currentGroup = "";
-  drinks.forEach((d, idx) => {
-    const g = groupLetter(d.name);
-    if (g !== currentGroup) {
-      currentGroup = g;
-      const gh = document.createElement("div");
-      gh.className = "groupHead";
-      gh.textContent = currentGroup;
-      wrap.appendChild(gh);
-    }
-    const div = document.createElement("div");
-    div.className = "litem";
-
-    const isEditing = (drinkEditIndex === idx);
-
-    const header = document.createElement("div");
-    header.innerHTML = `
-      <div>
-        <div><b>${escapeHTML(d.name)}</b></div>
-        <div class="muted">${round0(d.kcal)} kcal • C ${round1(d.c)} (per 100mL)</div>
-      </div>
-    `;
-
-    const actions = document.createElement("div");
-    actions.className = "lactions";
-
-    const editBtn = document.createElement("button");
-    editBtn.className = "btn";
-    editBtn.textContent = isEditing ? "Cancel" : "Edit";
-    editBtn.addEventListener("click", () => {
-      drinkEditIndex = isEditing ? -1 : idx;
-      renderDrinkManager();
-    });
-
-    const del = document.createElement("button");
-    del.className = "btn danger";
-    del.textContent = "Delete";
-    del.addEventListener("click", () => {
-      const name = drinks[idx].name;
-      drinks.splice(idx, 1);
-      saveJSON(LS.DRINKS, drinks);
-
-      dayDraft.drinkRows.forEach(r => { if (r.drink === name) r.drink = ""; });
-      Object.keys(history || {}).forEach(dt => {
-        const day = history[dt];
-        if (!day || !Array.isArray(day.drinkRows)) return;
-        day.drinkRows.forEach(r => { if (r.drink === name) r.drink = ""; });
-      });
-
-      drinkEditIndex = -1;
-      renderDrinkManager();
-      refreshDrinkSelects();
-      renderDrinkRows();
-      persistDraft();
-      recalcTotals();
-      toast("Deleted");
-    });
-
-    actions.appendChild(editBtn);
-    actions.appendChild(del);
-
-    div.appendChild(header);
-    div.appendChild(actions);
-
-    if (isEditing) {
-      const row = document.createElement("div");
-      row.className = "editrow";
-      row.innerHTML = `
-        <input id="de_name_${idx}" value="${escapeAttr(d.name)}" />
-        <input id="de_kcal_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(d.kcal))}" placeholder="kcal/100mL" />
-        <input id="de_c_${idx}" type="number" inputmode="decimal" value="${escapeAttr(String(d.c))}" placeholder="carbs/100mL" />
-        <button id="de_save_${idx}" class="btn primary">Save</button>
-      `;
-      div.appendChild(row);
-
-      row.querySelector(`#de_save_${idx}`).addEventListener("click", () => {
-        const newName = (row.querySelector(`#de_name_${idx}`).value || "").trim();
-        const kcal = Number(row.querySelector(`#de_kcal_${idx}`).value);
-        const c = Number(row.querySelector(`#de_c_${idx}`).value);
-
-        if (!newName) return toast("Name required");
-        if (![kcal,c].every(isFinite)) return toast("Enter valid numbers");
-
-        const oldName = drinks[idx].name;
-        if (newName.toLowerCase() !== oldName.toLowerCase()) {
-          if (drinks.some((x,i)=> i!==idx && x.name.toLowerCase()===newName.toLowerCase())) {
-            return toast("That name already exists");
-          }
-        }
-
-        drinks[idx] = { name: newName, kcal, c };
-        drinks.sort(nameSorter);
-        saveJSON(LS.DRINKS, drinks);
-
-        renameDrinkEverywhere(oldName, newName);
-        saveJSON(LS.HISTORY, history);
-        persistDraft();
-
-        drinkEditIndex = -1;
-        renderDrinkManager();
-        refreshDrinkSelects();
-        renderDrinkRows();
-        renderHistory();
-        recalcTotals();
-        toast("Saved");
-      });
-    }
-
-    wrap.appendChild(div);
-  });
-}
-
-/* ---------- Rows rendering (no typing rerender) ---------- */
-
-function addFoodRow() {
-  dayDraft.foodRows.push({ food: foods[0]?.name || "", grams: 0 });
-  renderFoodRows();        // safe (button click)
-  persistDraft();
-  recalcTotals();
-}
-
-function addDrinkRow() {
-  dayDraft.drinkRows = (dayDraft.drinkRows || []).map(normalizeDrinkRow);
-  dayDraft.drinkRows.push({ drink: drinks[0]?.name || "", unit: "ml", amount: 0 });
-  renderDrinkRows();
-  persistDraft();
-  updateRowOutputs();
-  recalcTotals();
-}
-
-function renderFoodRows() {
-  const wrap = $("foodRows");
-  wrap.innerHTML = "";
-
-  dayDraft.foodRows.forEach((row, idx) => {
-    const tr = document.createElement("div");
-    tr.className = "trow";
-
-    const sel = document.createElement("select");
-    sel.dataset.kind = "food";
-    sel.dataset.idx = String(idx);
-    fillFoodSelect(sel, row.food);
-
-    const grams = document.createElement("input");
-    grams.type = "number";
-    grams.inputMode = "decimal";
-    grams.step = "1";
-    grams.placeholder = "g";
-    grams.value = row.grams ? String(row.grams) : "";
-    grams.dataset.kind = "grams";
-    grams.dataset.idx = String(idx);
-
-    // IMPORTANT: change/blur only (keyboard-safe)
-    grams.addEventListener("change", onFoodRowChanged);
-    grams.addEventListener("blur", onFoodRowChanged);
-    sel.addEventListener("change", onFoodRowChanged);
-
-    const kcal = document.createElement("div"); kcal.className = "cell right"; kcal.id = `fk_${idx}`;
-    const p = document.createElement("div"); p.className = "cell right"; p.id = `fp_${idx}`;
-    const f = document.createElement("div"); f.className = "cell right"; f.id = `ff_${idx}`;
-    const c = document.createElement("div"); c.className = "cell right"; c.id = `fc_${idx}`;
-
-    const del = document.createElement("button");
-    del.className = "iconBtn";
-    del.textContent = "✕";
-    del.title = "Delete row";
-    del.addEventListener("click", () => {
-      dayDraft.foodRows.splice(idx, 1);
-      renderFoodRows(); // safe: button click
-      persistDraft();
-      recalcTotals();
-    });
-
-    tr.appendChild(wrapCell(sel));
-    tr.appendChild(wrapCell(grams));
-    tr.appendChild(wrapCell(kcal));
-    tr.appendChild(p);
-    tr.appendChild(f);
-    tr.appendChild(c);
-    tr.appendChild(wrapCell(del));
-    wrap.appendChild(tr);
-  });
-
-  updateRowOutputs();
-}
-
-function renderDrinkRows() {
-  const wrap = $("drinkRows");
-  wrap.innerHTML = "";
-
-  dayDraft.drinkRows = (dayDraft.drinkRows || []).map(normalizeDrinkRow);
-
-  dayDraft.drinkRows.forEach((row, idx) => {
-    const tr = document.createElement("div");
-    tr.className = "trow";
-
-    const sel = document.createElement("select");
-    sel.dataset.kind = "drink";
-    sel.dataset.idx = String(idx);
-    fillDrinkSelect(sel, row.drink);
-
-    const unit = document.createElement("select");
-    unit.dataset.kind = "unit";
-    unit.dataset.idx = String(idx);
-    DRINK_UNITS.forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = u.key;
-      opt.textContent = u.label;
-      unit.appendChild(opt);
-    });
-    unit.value = row.unit || "ml";
-
-    // Single amount input (same style as Food amount)
-    const amt = document.createElement("input");
-    amt.type = "number";
-    amt.inputMode = "decimal";
-    amt.step = "1";
-    amt.min = "0";
-    amt.placeholder = unit.value === "ml" ? "mL" : "Qty";
-    amt.value = (row.amount ?? "") !== "" ? String(row.amount) : "";
-    amt.dataset.kind = "amount";
-    amt.dataset.idx = String(idx);
-
-    const kcal = document.createElement("div");
-    kcal.className = "cell right";
-    kcal.id = `dk_${idx}`;
-
-    const carb = document.createElement("div");
-    carb.className = "cell right";
-    carb.id = `dc_${idx}`;
-
-    const del = document.createElement("button");
-    del.className = "btn icon";
-    del.textContent = "✕";
-    del.addEventListener("click", () => {
-      dayDraft.drinkRows.splice(idx, 1);
-      renderDrinkRows();
-      persistDraft();
-      updateRowOutputs();
-      recalcTotals();
-    });
-
-    sel.addEventListener("change", onDrinkRowChanged);
-    unit.addEventListener("change", () => {
-      amt.placeholder = unit.value === "ml" ? "mL" : "Qty";
-      onDrinkRowChanged({ target: unit });
-    });
-    amt.addEventListener("input", onDrinkRowChanged);
-    amt.addEventListener("change", onDrinkRowChanged);
-    amt.addEventListener("blur", onDrinkRowChanged);
-
-    tr.appendChild(wrapCell(sel));
-    tr.appendChild(wrapCell(unit));
-    tr.appendChild(wrapCell(amt));
-    tr.appendChild(wrapCell(kcal));
-    tr.appendChild(wrapCell(carb));
-    tr.appendChild(wrapCell(del));
-
-    wrap.appendChild(tr);
-  });
-
-  updateRowOutputs();
-}
-
-
-
-
-function wrapCell(el) {
-  const d = document.createElement("div");
-  d.className = "cell";
-  d.appendChild(el);
-  return d;
-}
-
-function fillFoodSelect(sel, selectedName) {
-  sel.innerHTML = "";
-  foods.forEach(f => {
-    const o = document.createElement("option");
-    o.value = f.name;
-    o.textContent = f.name;
-    sel.appendChild(o);
-  });
-  if (selectedName && foods.some(f => f.name === selectedName)) {
-    sel.value = selectedName;
-  }
-}
-
-function fillDrinkSelect(sel, selectedName) {
-  sel.innerHTML = "";
-  drinks.forEach(d => {
-    const o = document.createElement("option");
-    o.value = d.name;
-    o.textContent = d.name;
-    sel.appendChild(o);
-  });
-  if (selectedName && drinks.some(d => d.name === selectedName)) {
-    sel.value = selectedName;
-  }
-}
-
-function refreshFoodSelects() {
-  // update existing selects without rerendering while typing
-  document.querySelectorAll('select[data-kind="food"]').forEach(sel => {
-    const idx = Number(sel.dataset.idx);
-    const cur = dayDraft.foodRows[idx]?.food || "";
-    fillFoodSelect(sel, cur);
-  });
-}
-
-function refreshDrinkSelects() {
-  document.querySelectorAll('select[data-kind="drink"]').forEach(sel => {
-    const idx = Number(sel.dataset.idx);
-    const cur = dayDraft.drinkRows[idx]?.drink || "";
-    fillDrinkSelect(sel, cur);
-  });
-}
-
-function onFoodRowChanged(e) {
-  const idx = Number(e.target.dataset.idx);
-  const row = dayDraft.foodRows[idx];
-  if (!row) return;
-
-  const parent = e.target;
-
-  // Read current values from DOM row (safe)
-  const tr = parent.closest(".trow");
-  const sel = tr.querySelector('select[data-kind="food"]');
-  const grams = tr.querySelector('input[data-kind="grams"]');
-
-  row.food = sel?.value || "";
-  row.grams = Number(grams?.value) || 0;
-
-  persistDraft();
-  updateRowOutputs();
-  recalcTotals();
-}
-
-function onDrinkRowChanged(e) {
-  const idx = Number(e.target.dataset.idx);
-  const row = dayDraft.drinkRows[idx];
-  if (!row) return;
-
-  const tr = e.target.closest(".trow");
-  const sel = tr.querySelector('select[data-kind="drink"]');
-  const unit = tr.querySelector('select[data-kind="unit"]');
-  const amt = tr.querySelector('[data-kind="amount"]');
-
-  row.drink = sel?.value || "";
-  row.unit = unit?.value || "ml";
-  row.amount = Number(amt?.value) || 0;
-
-  persistDraft();
-  updateRowOutputs();
-  recalcTotals();
-}
-
-function updateRowOutputs() {
-  // update only numbers (no rerender)
-  dayDraft.foodRows.forEach((r, i) => {
-    const f = foods.find(x => x.name === r.food);
-    const g = Number(r.grams) || 0;
-    const mult = g / 100;
-
-    const kcal = f ? f.kcal * mult : 0;
-    const p = f ? f.p * mult : 0;
-    const fat = f ? f.f * mult : 0;
-    const c = f ? f.c * mult : 0;
-
-    setText(`fk_${i}`, round0(kcal));
-    setText(`fp_${i}`, round1(p));
-    setText(`ff_${i}`, round1(fat));
-    setText(`fc_${i}`, round1(c));
-  });
-
-  dayDraft.drinkRows.forEach((r, i) => {
-    const d = drinks.find(x => x.name === r.drink);
-    const ml = Number(r.ml) || 0;
-    const mult = ml / 100;
-
-    const kcal = d ? d.kcal * mult : 0;
-    const c = d ? d.c * mult : 0;
-
-    setText(`dk_${i}`, round0(kcal));
-    setText(`dc_${i}`, round1(c));
-  });
-}
-
-function setText(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = String(val);
-}
-
-/* ---------- Totals + Progress ---------- */
-
-function computeSumsForDay(day) {
-  const sums = { foodKcal: 0, p: 0, f: 0, c: 0, alcKcal: 0, alcC: 0 };
-
-  (day.foodRows || []).forEach(r => {
-    const f = foods.find(x => x.name === r.food);
-    const g = Number(r.grams) || 0;
-    const mult = g / 100;
-    if (!f) return;
-    sums.foodKcal += f.kcal * mult;
-    sums.p += f.p * mult;
-    sums.f += f.f * mult;
-    sums.c += f.c * mult;
-  });
-
-  (day.drinkRows || []).map(normalizeDrinkRow).forEach(r => {
-    const d = drinks.find(x => x.name === r.drink);
-    const ml = drinkMlFromRow(r);
-    const mult = ml / 100;
-    if (!d) return;
-    sums.alcKcal += d.kcal * mult;
-    sums.alcC += d.c * mult;
-  });
-
-  return sums;
-}
-
-function recalcTotals() {
-  const sums = computeSumsForDay(dayDraft);
-
-  $("tFoodKcal").textContent = String(round0(sums.foodKcal));
-  $("tP").textContent = String(round0(sums.p));
-  $("tF").textContent = String(round0(sums.f));
-  $("tC").textContent = String(round0(sums.c));
-  $("tAlcKcal").textContent = String(round0(sums.alcKcal));
-  $("tAlcC").textContent = String(round0(sums.alcC));
-
-  // progress bars use computed targets
-  const ct = readComputedTargets();
-  const calPct = ct.kcal > 0 ? (sums.foodKcal / ct.kcal) * 100 : 0;
-  const pPct = ct.p > 0 ? (sums.p / ct.p) * 100 : 0;
-  const fPct = ct.f > 0 ? (sums.f / ct.f) * 100 : 0;
-  const cPct = ct.c > 0 ? (sums.c / ct.c) * 100 : 0;
-
-  setBar("pCal", "pCalTxt", calPct);
-  setBar("pP", "pPTxt", pPct);
-  setBar("pF", "pFTxt", fPct);
-  setBar("pC", "pCTxt", cPct);
-}
-
-function setBar(barId, txtId, pct) {
-  const p = clamp(pct, 0, 200); // allow over 100
-  $(barId).style.width = `${clamp(p, 0, 100)}%`;
-  $(txtId).textContent = `${round0(p)}%`;
-}
-
-/* ---------- Targets ---------- */
-
-function applyTargetsToUI() {
-  $("bw").value = String(targets.bw ?? 98);
-  $("bwUnit").value = targets.bwUnit ?? "kg";
-  $("pgkg").value = String(targets.pgkg ?? 2.0);
-  $("tcal").value = String(targets.tcal ?? 2200);
-  $("tcarb").value = String(targets.tcarb ?? 0);
-}
-
-function readTargetsFromUI() {
-  return {
-    bw: Number($("bw").value) || 0,
-    bwUnit: $("bwUnit").value || "kg",
-    pgkg: Number($("pgkg").value) || 0,
-    tcal: Number($("tcal").value) || 0,
-    tcarb: Number($("tcarb").value) || 0
-  };
-}
-
-let computedTargets = { kcal: 0, p: 0, f: 0, c: 0 };
-
-function computeTargetsAndUpdateUI() {
-  targets = readTargetsFromUI();
-
-  // Convert to kg if lb
-  const bwKg = targets.bwUnit === "lb" ? targets.bw * 0.45359237 : targets.bw;
-
-  const p = bwKg * (Number(targets.pgkg) || 0);
-  const c = Number(targets.tcarb) || 0;
-  const kcal = Number(targets.tcal) || 0;
-
-  // calories left for fat after protein + carbs
-  const proteinKcal = p * 4;
-  const carbKcal = c * 4;
-  const fatKcal = Math.max(0, kcal - proteinKcal - carbKcal);
-  const f = fatKcal / 9;
-
-  computedTargets = { kcal: round0(kcal), p: round0(p), f: round0(f), c: round0(c) };
-
-  $("ctKcal").textContent = String(computedTargets.kcal);
-  $("ctP").textContent = String(computedTargets.p);
-  $("ctF").textContent = String(computedTargets.f);
-  $("ctC").textContent = String(computedTargets.c);
-
-  // don’t save while typing, only on explicit Save Targets
-  recalcTotals();
-}
-
-function readComputedTargets() {
-  return computedTargets;
-}
-
-/* ---------- Weekly report ---------- */
-
-function showWeeklyReport() {
-  const dates = Object.keys(history).sort(); // ascending
-  if (!dates.length) return toast("No history yet");
-
-  // last 7 saved days
-  const last = dates.slice(-7);
-  let totalKcal = 0, totalP = 0, totalF = 0, totalC = 0, totalAlc = 0;
-
-  last.forEach(d => {
-    const sums = computeSumsForDay(history[d]);
-    totalKcal += sums.foodKcal;
-    totalP += sums.p;
-    totalF += sums.f;
-    totalC += sums.c;
-    totalAlc += sums.alcKcal;
-  });
-
-  const n = last.length;
-  alert(
-    `Weekly (last ${n} saved days)\n\n` +
-    `Avg Food kcal: ${round0(totalKcal/n)}\n` +
-    `Avg Protein: ${round0(totalP/n)} g\n` +
-    `Avg Fat: ${round0(totalF/n)} g\n` +
-    `Avg Carbs: ${round0(totalC/n)} g\n` +
-    `Avg Alcohol kcal: ${round0(totalAlc/n)}\n\n` +
-    `Days included:\n${last.join(", ")}`
-  );
-}
-
-/* ---------- Export ---------- */
-
-function exportHistoryJSON() {
-  const data = {
-    exportedAt: new Date().toISOString(),
-    targets,
-    foods,
-    drinks,
-    history
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "carnivore-tracker-export.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function importFromFile(file){
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try{
-      const parsed = JSON.parse(String(reader.result||""));
-      const ok = confirm("Import will REPLACE your current data on this device. Continue?");
-      if(!ok) return;
-
-      // Accept either full export object or a raw history object
-      let nextTargets = null, nextFoods = null, nextDrinks = null, nextHistory = null;
-
-      if(parsed && typeof parsed === "object" && !Array.isArray(parsed)){
-        if(parsed.targets) nextTargets = parsed.targets;
-        if(Array.isArray(parsed.foods)) nextFoods = parsed.foods;
-        if(Array.isArray(parsed.drinks)) nextDrinks = parsed.drinks;
-        if(parsed.history && typeof parsed.history === "object") nextHistory = parsed.history;
-
-        // If it looks like a raw history map (dates -> payload), accept it
-        const keys = Object.keys(parsed);
-        const looksLikeHistoryMap = keys.some(k => /^\d{4}-\d{2}-\d{2}$/.test(k));
-        if(!nextHistory && looksLikeHistoryMap) nextHistory = parsed;
+  let changed=0;
+  cur.forEach(r=>{
+    const rir = parseFloat(r.rir);
+    // ignore if no weight or rir entered
+    if(!isFinite(rir)) return;
+
+    // If weight-based exercise:
+    if(r.weight!==undefined){
+      if(rir<=1){
+        // push weight up
+        r.weight = bump(r.weight);
+        changed++;
+      } else if(rir>=3){
+        // if easy, also push weight up slightly (same step) for simplicity
+        r.weight = bump(r.weight);
+        changed++;
+      } else {
+        // rir ~2 : keep weight
       }
-
-      // Minimal validation + fallbacks
-      if(nextFoods) foods = nextFoods;
-      if(nextDrinks) drinks = nextDrinks;
-      if(nextTargets) targets = nextTargets;
-      if(nextHistory) history = nextHistory;
-
-      // Persist
-      saveJSON(LS.FOODS, foods);
-      saveJSON(LS.DRINKS, drinks);
-      saveJSON(LS.TARGETS, targets);
-      saveJSON(LS.HISTORY, history);
-
-      // Refresh UI
-      foodEditIndex = -1; drinkEditIndex = -1;
-      renderFoodManager();
-      renderDrinkManager();
-      refreshFoodSelects();
-      refreshDrinkSelects();
-      renderFoodRows();
-      renderDrinkRows();
-      renderHistory();
-      recalcTotals();
-      toast("Import complete");
-    } catch(e){
-      console.error(e);
-      toast("Invalid JSON file");
+      return;
     }
+  });
+
+  save(s);
+  render();
+  note.textContent = changed ? `Progression applied (${changed} row${changed===1?'':'s'}).` : 'No rows had RIR entered.';
+}
+function saveSession(){
+  const sess=ensureSession();
+  sess.rows=sess.rows.filter(r=>r.exId);
+  save(state);
+  note.textContent='Saved.'; renderWorkout();
+}
+
+tabs.forEach(b=>b.onclick=()=>{
+  const next=b.dataset.tab;
+  if(next===currentTab) return;
+  currentTab=next;
+  // Update UI immediately
+  render();
+  // Auto-load the preset for workout day tabs (no prompt, no extra button)
+  if(daySelect && (currentTab==='strength'||currentTab==='fatloss'||currentTab==='volume')) daySelect.value=currentTab;
+  if(currentTab==='strength'||currentTab==='fatloss'||currentTab==='volume'){
+    if(canAutoLoadPreset()) loadPreset(false,true);
+  }
+});
+if(daySelect){
+  daySelect.onchange=()=>{
+    const v=daySelect.value;
+    if(!v) return; // stay blank until user picks
+    currentTab=v;
+    render();
+    loadPreset(false,true);
+    // Persist the chosen day type for this date even if rows are still blank
+    const sess=ensureSession();
+    sess.dayType=v;
+    save(state);
   };
-  reader.readAsText(file);
 }
 
-/* ---------- Helpers ---------- */
+function openDate(iso){
+  followToday=false;
+  currentDate=iso;
+  dateInput.value=currentDate;
 
-function toast(msg) {
-  // simple toast via the installHint area
-  const el = $("installHint");
-  if (!el) return;
-  el.textContent = msg;
-  el.style.opacity = "1";
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { el.style.opacity = "0.8"; }, 1600);
+  // If this date already has a session with real data, just show it
+  const existing=state.sessions[currentDate];
+  if(existing?.dayType && isCompleted(existing)){
+    currentTab=existing.dayType;
+    if(daySelect) daySelect.value=existing.dayType;
+    render();
+    return;
+  }
+
+  // Decide what today should be based on the last completed (SAVED) workout
+  const last=findLastCompletedBefore(currentDate);
+  let nextType='strength';
+  if(last){
+    const idx=DAY_ORDER.indexOf(last.dayType);
+    nextType = idx>=0 ? DAY_ORDER[(idx+1)%DAY_ORDER.length] : 'strength';
+  }
+
+  // Create an in-memory session for this date (won't persist unless you type or press Save)
+  if(!state.sessions[currentDate]) state.sessions[currentDate]={dayType:nextType,rows:[]};
+  state.sessions[currentDate].dayType=nextType;
+
+  currentTab=nextType;
+  if(daySelect) daySelect.value=nextType;
+
+  // Auto-load preset rows for viewing/logging
+  loadPreset(true, false);
+  render();
 }
 
-function installHint() {
-  const el = $("installHint");
-  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
-  if (isStandalone) {
-    el.textContent = "Installed: runs like an app.";
-  } else {
-    el.textContent = "Tip: Use Share → Add to Home Screen (Safari) to install.";
+function isCompleted(sess){
+  return !!(sess?.rows && sess.rows.some(r=>r.exId && (String(r.exId).trim()!=='')));
+}
+
+function findLastCompletedBefore(iso){
+  const dates=Object.keys(state.sessions||{}).filter(d=>d<iso).sort();
+  for(let i=dates.length-1;i>=0;i--){
+    const s=state.sessions[dates[i]];
+    if(s?.dayType && isCompleted(s)) return s;
+  }
+  return null;
+}
+
+prevDay.onclick=()=>openDate(addDays(currentDate,-1));
+nextDay.onclick=()=>openDate(addDays(currentDate,1));
+todayBtn.onclick=()=>{followToday=true; openDate(localISO());};
+dateInput.onchange=()=>openDate(dateInput.value||localISO());
+
+
+
+// If you open the app tomorrow, it should open on tomorrow (today's date).
+// When followToday is true, we auto-jump to today's date on focus/return.
+function syncToTodayIfNeeded(){
+  if(!followToday) return;
+  const today=localISO();
+  if(today!==currentDate){
+    openDate(today);
   }
 }
+window.addEventListener('focus', syncToTodayIfNeeded);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncToTodayIfNeeded(); });
 
-function escapeHTML(str) {
-  return String(str).replace(/[&<>"']/g, (m) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"
-  }[m]));
+loadPresetBtn.onclick=()=>loadPreset(false,true);
+copyPrevBtn.onclick=copyPrev;
+clearBtn.onclick=clearDay;
+addRowBtn.onclick=addRow;
+progBtn.onclick=applyProgression;
+saveBtn.onclick=saveSession;
+
+// Manage
+function renderManage(){
+  exList.innerHTML='';
+  const sorted=state.exercises.slice().sort((a,b)=> (a.archived===b.archived)?a.name.localeCompare(b.name):(a.archived?1:-1));
+  sorted.forEach(ex=>{
+    const div=document.createElement('div'); div.className='item';
+    const name=document.createElement('div'); name.style.fontWeight='800'; name.textContent=ex.name;
+    const t=document.createElement('div'); t.className='pill'; t.textContent=ex.type==='time'?'Time (sec)':'Reps+Weight';
+    const st=document.createElement('div'); st.className='pill'; st.textContent=ex.archived?'Archived':'Active';
+
+    const rename=document.createElement('button'); rename.className='btn'; rename.textContent='Rename';
+    rename.onclick=()=>{const n=prompt('Rename exercise', ex.name); if(!n) return; ex.name=n.trim(); save(state); renderManage(); if(currentTab!=='manage') renderWorkout();};
+
+    const toggle=document.createElement('button'); toggle.className='btn'; toggle.textContent=ex.type==='time'?'Set to Reps':'Set to Time';
+    toggle.onclick=()=>{ex.type=ex.type==='time'?'reps':'time'; save(state); renderManage(); if(currentTab!=='manage') renderWorkout();};
+
+    const arch=document.createElement('button'); arch.className='btn danger'; arch.textContent=ex.archived?'Restore':'Archive';
+    arch.onclick=()=>{ex.archived=!ex.archived; save(state); renderManage(); if(currentTab!=='manage') renderWorkout();};
+
+    div.appendChild(name);div.appendChild(t);div.appendChild(st);div.appendChild(rename);div.appendChild(toggle);div.appendChild(arch);
+    exList.appendChild(div);
+  });
+}
+addExBtn.onclick=()=>{const n=(newName.value||'').trim(); if(!n) return; state.exercises.push({id:uid('ex'),name:n,type:newType.value,archived:false}); newName.value=''; save(state); renderManage();};
+
+// History
+function renderHistory(){
+  const days=parseInt(rangeSel.value,10);
+  const cutoff=addDays(localISO(),-days);
+  const q=(search.value||'').trim().toLowerCase();
+
+  const entries=Object.entries(state.sessions).filter(([iso,s])=> iso>=cutoff && s?.rows?.length).sort((a,b)=>a[0]<b[0]?1:-1);
+  histList.innerHTML='';
+  entries.forEach(([iso,sess])=>{
+    const rows=sess.rows.filter(r=>{const ex=exById(r.exId); if(!ex) return false; if(!q) return true; return ex.name.toLowerCase().includes(q);});
+    if(!rows.length) return;
+    const card=document.createElement('div'); card.className='hcard';
+    card.innerHTML=`<div class="hhead" style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><div><strong>${iso}</strong> <span class="pill">${sess.dayType||'day'}</span></div><button class="xbtn" title="Delete this day" aria-label="Delete">✕</button></div>`;
+
+    const delBtn=card.querySelector('.xbtn');
+    delBtn.onclick=(ev)=>{
+      ev.stopPropagation();
+      if(!confirm(`Delete ${iso}?`)) return;
+      delete state.sessions[iso];
+      save(state);
+      // If we deleted the currently open day, refresh it
+      renderHistory();
+    };
+    card.onclick=()=>{
+      followToday=false;
+      currentDate=iso;
+      dateInput.value=currentDate;
+      // switch to that day's type if known
+      if(sess.dayType && (sess.dayType==='strength'||sess.dayType==='fatloss'||sess.dayType==='volume')){
+        currentTab=sess.dayType;
+      }
+      syncDaySelectForDate();
+      render();
+    };
+    const list=document.createElement('div'); list.style.marginTop='8px'; list.style.display='grid'; list.style.gap='6px';
+    rows.forEach(r=>{const ex=exById(r.exId); const line=document.createElement('div'); line.className='muted small';
+      if(ex?.type==='time') line.textContent=`${ex.name}: ${r.sets} sets • ${r.target||''}s • RIR ${r.rir||''}`;
+      else line.textContent=`${ex.name}: ${r.sets}×${r.target||''} @ ${r.weight||''}kg • RIR ${r.rir||''}`;
+      list.appendChild(line);
+    });
+    card.appendChild(list); histList.appendChild(card);
+  });
+}
+rangeSel.onchange=renderHistory; search.oninput=renderHistory;
+
+
+function setupBackup(btnEl,fileEl){
+  if(!btnEl || !fileEl) return;
+  btnEl.onclick=()=>{
+    const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`workout_backup_${localISO()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  fileEl.onchange=async()=>{
+    const f=fileEl.files?.[0];
+    if(!f) return;
+    try{
+      const text=await f.text();
+      const incoming=JSON.parse(text);
+      if(!incoming?.exercises || !incoming?.sessions || !incoming?.presets){
+        alert('Backup not recognized.');
+        return;
+      }
+      if(!confirm('Import backup? This replaces your data on this device.')) return;
+      state=incoming;
+      save(state);
+      alert('Imported.');
+      render();
+    }catch(e){
+      alert('Import failed.');
+    }finally{
+      fileEl.value='';
+    }
+  };
 }
 
-function escapeAttr(s){
-  return String(s ?? "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
+setupBackup(exportBtn, importFile);
+setupBackup(exportBtn2, importFile2);
+
+
+// Service worker
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}
+
+render();
