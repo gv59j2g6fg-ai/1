@@ -262,7 +262,27 @@ input[type="number"]::-webkit-outer-spin-button{
 
 
 
-/* === DRINKS V8: single amount input (perfect alignment) (Build: v8-20260201-143131-40t0z6) === */
+
+
+/* === FOOD + DRINKS V9: add delete column header cell + align grids (Build: v9-20260201-143733-rminqg) === */
+
+/* Food table (7 cols incl delete) */
+.table.food .thead,
+#foodRows .trow{
+  grid-template-columns: minmax(200px, 1.7fr) minmax(140px, 1fr) 96px 84px 84px 84px 54px;
+  column-gap: 14px;
+}
+
+/* Right-align numeric headers in food */
+.table.food .thead > div:nth-child(3),
+.table.food .thead > div:nth-child(4),
+.table.food .thead > div:nth-child(5),
+.table.food .thead > div:nth-child(6){
+  text-align:right;
+  padding-right:10px;
+}
+
+/* Drinks table (6 cols incl delete) */
 .table.drinks .thead,
 #drinkRows .trow{
   grid-template-columns: minmax(180px, 1.45fr) minmax(140px, .95fr) minmax(160px, 1.05fr) 96px 110px 54px;
@@ -275,18 +295,20 @@ input[type="number"]::-webkit-outer-spin-button{
   padding-right:10px;
 }
 
+/* Numeric cells */
+#foodRows .cell.right,
 #drinkRows .cell.right{
   text-align:right;
   padding-right:10px;
   font-variant-numeric: tabular-nums;
 }
 
-/* iOS number spinner visibility (best effort) */
-#drinkRows input[type="number"]{
+/* iOS spinner visibility (best effort) */
+input[type="number"]{
   color-scheme: dark;
 }
-#drinkRows input[type="number"]::-webkit-inner-spin-button,
-#drinkRows input[type="number"]::-webkit-outer-spin-button{
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button{
   filter: invert(1);
   opacity: .9;
 }
